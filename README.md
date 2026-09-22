@@ -32,6 +32,8 @@ The file has the same structure as the bundled checklists in `healthcheck/`:
 
 Files that are not valid checklist JSON are skipped (with a message on the server console).
 
+See [template.md](template.md) for a full description of the file format, a minimal template to copy, and guidance on what a health check should cover.
+
 ## Production deployment (Ubuntu 24.04)
 
 The `deploy/` directory contains an installer that sets the tool up as a proper service with HTTPS:
@@ -82,6 +84,7 @@ The default password is `oracle`. To change it, compute the SHA-256 hex digest o
 - `index.html` - app shell (top bar, hamburger menu, category navigation, content container, password modal)
 - `css/styles.css` - OCI Console inspired styling
 - `healthcheck/*.json` - one checklist definition per health check (title, description, categories and items); the bundled files cover various OCI services
+- `template.md` - how to write a health check: file format, minimal template and content guidance
 - `data/feedback.json` - user feedback, per health check (created by the server, never served)
 - `js/app.js` - landing page, data loading, hash router (`#/<healthcheck>/<category>`), rendering, persistence, export/import, editor mode
 - `server.py` - serves the site, lists the health checks (`GET /api/healthchecks`), saves checklist edits (`POST /api/checklist/<id>`) and stores feedback (`/api/feedback/<id>`)
