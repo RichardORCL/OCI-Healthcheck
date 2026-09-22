@@ -99,6 +99,13 @@
     '<path d="M4.5 10.5h-1.5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
     "</svg>";
 
+  // Same download glyph as the export entries in the hamburger menu.
+  var JSON_EXPORT_ICON =
+    '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M8 1.5v8.2M4.8 6.5L8 9.7l3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M2.5 11.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+    "</svg>";
+
   var WORD_ICON =
     '<svg viewBox="0 0 16 16" aria-hidden="true">' +
     '<path d="M3 2.5h6.5L13 6v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
@@ -1589,7 +1596,18 @@
     var titleRow = el("div", "page-title-row");
     titleRow.appendChild(el("h1", "", ACTION_ITEMS_TITLE));
 
-    var wordBtn = el("button", "btn title-actions");
+    var actions = el("div", "title-actions");
+
+    // Same export as "Export action items (JSON)" in the hamburger menu.
+    var jsonBtn = el("button", "btn");
+    jsonBtn.type = "button";
+    jsonBtn.innerHTML = JSON_EXPORT_ICON + "<span>Export to JSON</span>";
+    jsonBtn.title = "Download the action items as JSON (can be re-imported via Import results)";
+    jsonBtn.disabled = !groups.length;
+    jsonBtn.addEventListener("click", exportActionItems);
+    actions.appendChild(jsonBtn);
+
+    var wordBtn = el("button", "btn");
     wordBtn.type = "button";
     wordBtn.innerHTML = WORD_ICON + "<span>Export to Word</span>";
     wordBtn.title = "Download the action items as a Word document (.docx)";
@@ -1597,7 +1615,9 @@
     wordBtn.addEventListener("click", function () {
       exportActionItemsDocx(groups);
     });
-    titleRow.appendChild(wordBtn);
+    actions.appendChild(wordBtn);
+
+    titleRow.appendChild(actions);
     header.appendChild(titleRow);
 
     header.appendChild(el("p", "", ACTION_ITEMS_DESCRIPTION));
