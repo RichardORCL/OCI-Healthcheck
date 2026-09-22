@@ -1,6 +1,6 @@
 # OCI Health Check
 
-A small website to walk through health checks for Oracle Cloud Infrastructure services, styled after the OCI Console. Each health check is a JSON checklist in the `healthcheck/` folder; the site opens with a landing page where you pick the health check to run through. The OCVS (Oracle Cloud VMware Solution) health check is included as `healthcheck/OCVS-Healthcheck.json`.
+A small website to walk through health checks for Oracle Cloud Infrastructure services, styled after the OCI Console. Each health check is a JSON checklist in the `healthcheck/` folder; the site opens with a landing page where you pick the health check to run through. The tool ships with health checks for various OCI services, and new ones are added simply by dropping another checklist file into that folder.
 
 ## Usage
 
@@ -23,9 +23,9 @@ Other machines can then browse to `http://<this-machine's-IP>:8080`. Note that s
 
 ## Adding a health check
 
-Drop a checklist definition into the `healthcheck/` folder as `<name>.json` and reload the landing page; no restart is needed. The file name (without `.json`) becomes the health check id used in the URL, e.g. `healthcheck/OCVS-Healthcheck.json` is opened via `#/OCVS-Healthcheck`. Use only letters, digits, `.`, `_` and `-` in the name.
+Drop a checklist definition into the `healthcheck/` folder as `<name>.json` and reload the landing page; no restart is needed. The file name (without `.json`) becomes the health check id used in the URL, e.g. `healthcheck/My-Service.json` is opened via `#/My-Service`. Use only letters, digits, `.`, `_` and `-` in the name.
 
-The file has the same structure as `healthcheck/OCVS-Healthcheck.json`:
+The file has the same structure as the bundled checklists in `healthcheck/`:
 
 - `title` and `description` (HTML allowed) - shown on the landing page card and on the health check's overview page.
 - `categories` - a list of `{ "id", "route", "title", "short", "description", "items" }`, where each item is `{ "id", "label", "description"?, "commands"?, "links"?, "children"? }`. Item ids must be unique within the file; they key the stored statuses, comments and feedback.
@@ -81,7 +81,7 @@ The default password is `oracle`. To change it, compute the SHA-256 hex digest o
 - `config.json` - editor password hash (copy from `config.json.example` if missing)
 - `index.html` - app shell (top bar, hamburger menu, category navigation, content container, password modal)
 - `css/styles.css` - OCI Console inspired styling
-- `healthcheck/*.json` - one checklist definition per health check (title, description, categories and items); `OCVS-Healthcheck.json` is the OCVS health check
+- `healthcheck/*.json` - one checklist definition per health check (title, description, categories and items); the bundled files cover various OCI services
 - `data/feedback.json` - user feedback, per health check (created by the server, never served)
 - `js/app.js` - landing page, data loading, hash router (`#/<healthcheck>/<category>`), rendering, persistence, export/import, editor mode
 - `server.py` - serves the site, lists the health checks (`GET /api/healthchecks`), saves checklist edits (`POST /api/checklist/<id>`) and stores feedback (`/api/feedback/<id>`)
