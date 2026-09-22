@@ -1,0 +1,242 @@
+{
+  "exportedAt": "2026-09-07T15:40:00.000Z",
+  "categories": [
+    {
+      "id": "block-volumes",
+      "route": "block-volumes",
+      "title": "Block Volumes",
+      "short": "Block Volumes",
+      "description": "Block Volume inventory, performance settings, backup policies, replication and encryption.",
+      "items": [
+        {
+          "id": "blk-a",
+          "num": "a.",
+          "label": "Is there a complete inventory of all block volumes and boot volumes, including size, attached instance and lifecycle state?",
+          "description": "Check for unattached (orphaned) volumes that still generate cost. Below example queries all block volumes from the <b>OCI Cloud Shell</b>:",
+          "commands": [
+            "oci search resource structured-search \\\n  --query-text \"query volume resources where lifecycleState != 'TERMINATED'\" |\njq -r '\n  [\"display-name\",\"lifecycle-state\",\"availability-domain\",\"time-created\"],\n  (.data.items[] |\n    [ .\"display-name\",\n      .\"lifecycle-state\",\n      (.\"availability-domain\" // \"-\"),\n      .\"time-created\" ])\n  | @tsv' |\ncolumn -t -s $'\\t'"
+          ]
+        },
+        {
+          "id": "blk-b",
+          "num": "b.",
+          "label": "Do the volume performance settings (VPUs/GB) match the workload requirements?",
+          "description": "Volumes default to Balanced (10 VPUs/GB). Check whether performance-critical workloads use Higher Performance or Ultra High Performance, and whether low-activity volumes could be moved to Lower Cost (0 VPUs/GB). Also verify if auto-tune performance (detached volume auto-tune and performance-based auto-tune) is enabled where appropriate.",
+          "links": [
+            {
+              "text": "Block Volume Performance documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Block/Concepts/blockvolumeperformance.htm"
+            }
+          ]
+        },
+        {
+          "id": "blk-c",
+          "num": "c.",
+          "label": "Are backup policies assigned to all business-critical volumes?",
+          "children": [
+            {
+              "id": "blk-c-i",
+              "num": "i.",
+              "label": "Is a policy-based backup schedule (Bronze/Silver/Gold or custom) in place, or are backups taken manually?"
+            },
+            {
+              "id": "blk-c-ii",
+              "num": "ii.",
+              "label": "Are backups copied or scheduled to a second region for disaster recovery?"
+            }
+          ],
+          "links": [
+            {
+              "text": "Policy-Based Backups documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Block/Tasks/schedulingvolumebackups.htm"
+            }
+          ]
+        },
+        {
+          "id": "blk-d",
+          "num": "d.",
+          "label": "Is cross-region or cross-AD replication configured for volumes that require disaster recovery?",
+          "description": "Verify which volumes have replication enabled, the target region/AD, and whether the customer has tested activating a replica.",
+          "links": [
+            {
+              "text": "Block Volume Replication documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Block/Concepts/volumereplication.htm"
+            }
+          ]
+        },
+        {
+          "id": "blk-e",
+          "num": "e.",
+          "label": "Are volumes encrypted with customer-managed keys where required, and is in-transit encryption enabled?",
+          "description": "All volumes are encrypted at rest by default with Oracle-managed keys. Check whether compliance requirements mandate customer-managed keys (OCI Vault) and whether in-transit encryption is enabled on volume attachments.",
+          "links": [
+            {
+              "text": "Block Volume Encryption documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Block/Concepts/overview.htm#BlockVolumeEncryption"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "object-storage",
+      "route": "object-storage",
+      "title": "Object Storage",
+      "short": "Object Storage",
+      "description": "Bucket inventory, access controls, lifecycle management, replication and versioning.",
+      "items": [
+        {
+          "id": "obj-a",
+          "num": "a.",
+          "label": "Is there an inventory of all buckets, including storage tier, size and number of objects?",
+          "description": "Below example lists all buckets in a compartment from the <b>OCI Cloud Shell</b>:",
+          "commands": [
+            "ns=$(oci os ns get --raw-output --query 'data')\nfor bucket in $(oci os bucket list --compartment-id \"$COMPARTMENT_ID\" --all --raw-output --query 'data[].name | join(`\\n`, @)'); do\n  oci os bucket get --namespace \"$ns\" --bucket-name \"$bucket\" \\\n    --fields approximateCount --fields approximateSize |\n  jq -r '.data | [.name, .\"storage-tier\", (.\"approximate-count\"|tostring), (.\"approximate-size\"|tostring), .\"public-access-type\"] | @tsv'\ndone | column -t -s $'\\t'"
+          ]
+        },
+        {
+          "id": "obj-b",
+          "num": "b.",
+          "label": "Are any buckets configured with public access, and if so, is this intentional and documented?",
+          "description": "Public buckets are a common source of data exposure. Verify visibility of all public buckets and whether pre-authenticated requests (PARs) are used instead where possible. Check PAR expiration dates and clean up stale ones.",
+          "links": [
+            {
+              "text": "Object Storage Security Best Practices",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Security/Reference/objectstorage_security.htm"
+            }
+          ]
+        },
+        {
+          "id": "obj-c",
+          "num": "c.",
+          "label": "Are Object Lifecycle Management rules configured to move or delete data automatically?",
+          "children": [
+            {
+              "id": "obj-c-i",
+              "num": "i.",
+              "label": "Is infrequently accessed data moved to Infrequent Access or Archive tier?"
+            },
+            {
+              "id": "obj-c-ii",
+              "num": "ii.",
+              "label": "Are old backups, logs, or uncommitted multipart uploads cleaned up automatically?"
+            }
+          ],
+          "links": [
+            {
+              "text": "Object Lifecycle Management documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usinglifecyclepolicies.htm"
+            }
+          ]
+        },
+        {
+          "id": "obj-d",
+          "num": "d.",
+          "label": "Is cross-region replication enabled for buckets containing business-critical data?",
+          "description": "Verify which buckets have replication policies, the destination region, and whether the customer understands that replicated buckets are read-only in the destination.",
+          "links": [
+            {
+              "text": "Object Storage Replication documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usingreplication.htm"
+            }
+          ]
+        },
+        {
+          "id": "obj-e",
+          "num": "e.",
+          "label": "Is object versioning or retention rules enabled where data protection or compliance requires it?",
+          "description": "Versioning protects against accidental overwrite/delete. Retention rules can enforce WORM (write-once-read-many) compliance. Check if either is required and configured, and whether old versions are cleaned up via lifecycle rules to control cost.",
+          "links": [
+            {
+              "text": "Object Versioning documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usingversioning.htm"
+            },
+            {
+              "text": "Retention Rules documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usingretentionrules.htm"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "file-storage",
+      "route": "file-storage",
+      "title": "File Storage",
+      "short": "File Storage",
+      "description": "File system inventory, export security, snapshots, replication and performance.",
+      "items": [
+        {
+          "id": "fss-a",
+          "num": "a.",
+          "label": "Is there an inventory of all file systems, mount targets and exports, including utilized capacity?",
+          "description": "Below example lists all file systems from the <b>OCI Cloud Shell</b>:",
+          "commands": [
+            "oci search resource structured-search \\\n  --query-text \"query filesystem resources where lifecycleState != 'DELETED'\" |\njq -r '\n  [\"display-name\",\"lifecycle-state\",\"availability-domain\",\"time-created\"],\n  (.data.items[] |\n    [ .\"display-name\",\n      .\"lifecycle-state\",\n      (.\"availability-domain\" // \"-\"),\n      .\"time-created\" ])\n  | @tsv' |\ncolumn -t -s $'\\t'"
+          ]
+        },
+        {
+          "id": "fss-b",
+          "num": "b.",
+          "label": "Are NFS export options restricted to only the required clients and access levels?",
+          "children": [
+            {
+              "id": "fss-b-i",
+              "num": "i.",
+              "label": "Are exports limited by source CIDR instead of allowing 0.0.0.0/0?"
+            },
+            {
+              "id": "fss-b-ii",
+              "num": "ii.",
+              "label": "Are read-only access, root squash and identity squash applied where appropriate?"
+            }
+          ],
+          "links": [
+            {
+              "text": "NFS Export Options documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/File/Tasks/exportoptions.htm"
+            }
+          ]
+        },
+        {
+          "id": "fss-c",
+          "num": "c.",
+          "label": "Are snapshots scheduled via snapshot policies, and is snapshot data additionally backed up outside the file system?",
+          "description": "Snapshots reside in the same file system and do not protect against file system loss. Verify snapshot policy schedules and whether critical data is also copied to Object Storage or another region.",
+          "links": [
+            {
+              "text": "File System Snapshots documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/File/Tasks/managingsnapshots.htm"
+            }
+          ]
+        },
+        {
+          "id": "fss-d",
+          "num": "d.",
+          "label": "Is File Storage replication configured for file systems that require disaster recovery?",
+          "description": "Verify replication targets (cross-AD or cross-region), the replication interval, and whether failover has been tested.",
+          "links": [
+            {
+              "text": "File Storage Replication documentation",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/File/Tasks/FSreplication.htm"
+            }
+          ]
+        },
+        {
+          "id": "fss-e",
+          "num": "e.",
+          "label": "Do mount target and network throughput match the performance requirements of the workload?",
+          "description": "Check reported mount target throughput, whether HPMT (High Performance Mount Targets) is needed, correct NFS mount options on clients, and whether security rules (stateful vs stateless) or NSGs limit throughput.",
+          "links": [
+            {
+              "text": "File Storage Performance Guide",
+              "url": "https://docs.oracle.com/en-us/iaas/Content/File/Tasks/performance.htm"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "title": "OCI Storage Health Check",
+  "description": "Walk through the health check for OCI Storage services (Block Volumes, Object Storage and File Storage). Choose a category below or from the top bar, set a status for each item, and record your findings in the comments. Your progress is saved automatically in this browser.<br>\n<br>\n<b>Data privacy:</b> No health check results are sent to or stored on the server. Statuses and comments stay on your device in this browser only. To continue on another machine, use Export results and Import results from the menu. The only information sent to the server is optional feedback on checklist items, which maintainers use to improve the health check."
+}

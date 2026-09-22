@@ -1,0 +1,4 @@
+# Shell scripts and their config must keep LF endings so they run on Linux
+# even when the repo is checked out on Windows.
+*.sh text eol=lf
+deploy/install.conf* text eol=lf

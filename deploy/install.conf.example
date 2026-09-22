@@ -1,0 +1,40 @@
+# OCI Health Check - installer configuration
+#
+# Copy this file to install.conf (same directory) and adjust the values,
+# then run:  sudo ./install.sh
+#
+# To update an existing installation from git without re-running the full
+# installer:  sudo ./install.sh -update
+#
+# Lines are sourced by bash, so keep the KEY="value" format.
+
+# ---------------------------------------------------------------------------
+# REQUIRED
+# ---------------------------------------------------------------------------
+
+# Fully qualified domain name for the site. Must already resolve (public DNS
+# A/AAAA record) to this server, otherwise the Let's Encrypt challenge fails.
+DOMAIN="healthcheck.example.com"
+
+# E-mail address registered with Let's Encrypt (expiry notices, recovery).
+LETSENCRYPT_EMAIL="admin@example.com"
+
+# ---------------------------------------------------------------------------
+# OPTIONAL (defaults shown)
+# ---------------------------------------------------------------------------
+
+# Local port the Python app listens on (loopback only; nginx proxies to it).
+#APP_PORT="8080"
+
+# Directory the application is installed into.
+#INSTALL_DIR="/opt/oci-healthcheck"
+
+# System user the service runs as (created if it does not exist).
+#SERVICE_USER="oci-health"
+
+# Name of the systemd service / nginx site.
+#SERVICE_NAME="oci-healthcheck"
+
+# Set to "yes" to skip the Let's Encrypt step (nginx will serve plain HTTP
+# only). Useful for a first dry run before DNS is in place.
+#SKIP_CERTBOT="no"

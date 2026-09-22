@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# User-submitted feedback (private by design; never publish)
+data/feedback.json
+
+# Atomic-write temp files created by server.py
+data/*.json.tmp
+healthcheck/*.json.tmp
+
+# Console screenshots from a live tenancy (design references only, not used by the app)
+img/
+
+# Exported results / local backups
+*.export.json
+*.json
+
+# ... but the health check definitions are part of the tool
+!healthcheck/*.json
+
+# Machine-specific installer configuration (copy of deploy/install.conf.example)
+deploy/install.conf
+
+# Local server configuration (copy of config.json.example)
+config.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+.idea/
+.vscode/
