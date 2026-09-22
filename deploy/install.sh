@@ -13,6 +13,16 @@
 #
 #   sudo ./install.sh -update
 #
+# Health checks (healthcheck/*.json) are live data: editors change them
+# through the site. On every run the installer adds new health checks and
+# updates the ones that were never edited on the server (their content still
+# matches a version from the repository's git history). A health check that
+# was edited on the server AND changed in the repository is left alone; the
+# repository version is placed next to it as <name>.json.repo for a manual
+# merge. To overwrite such files anyway (a <name>.json.bak copy is kept):
+#
+#   sudo ./install.sh -update -replace-healthchecks
+#
 # The script is idempotent: re-running it updates the app files and
 # configuration in place.
 
@@ -23,11 +33,14 @@ set -euo pipefail
 # --------------------------------------------------------------------------
 
 UPDATE_MODE="no"
+REPLACE_HEALTHCHECKS="no"
 
 for arg in "$@"; do
     case "$arg" in
         -update) UPDATE_MODE="yes" ;;
-        *) echo "ERROR: unknown option: $arg" >&2; echo "Usage: sudo ./install.sh [-update]" >&2; exit 1 ;;
+        -replace-healthchecks) REPLACE_HEALTHCHECKS="yes" ;;
+        *) echo "ERROR: unknown option: $arg" >&2
+           echo "Usage: sudo ./install.sh [-update] [-replace-healthchecks]" >&2; exit 1 ;;
     esac
 done
 
@@ -58,6 +71,69 @@ info() { echo -e "\n==> $*"; }
 
 [[ $EUID -eq 0 ]] || fail "run as root (sudo ./install.sh)"
 
+# git, tolerating a checkout owned by another user (we run as root).
+repo_git() { git -c "safe.directory=$REPO_DIR" -C "$REPO_DIR" "$@"; }
+
+file_hash() { sha256sum "$1" | cut -d' ' -f1; }
+
+# True if the content hash $2 equals any committed version of repo file $1.
+# Used to recognise a deployed health check that was never edited on the
+# server: its content is still exactly what some commit of the repo shipped.
+in_repo_history() {
+    local path="$1" hash="$2" rev
+    [[ -d "$REPO_DIR/.git" ]] || return 1
+    while read -r rev; do
+        [[ -n "$rev" ]] || continue
+        if [[ "$(repo_git show "$rev:$path" 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$hash" ]]; then
+            return 0
+        fi
+    done < <(repo_git log --format=%H -- "$path" 2>/dev/null)
+    return 1
+}
+
+sync_healthchecks() {
+    local src name dest
+    for src in "$REPO_DIR"/healthcheck/*.json; do
+        [[ -f "$src" ]] || continue
+        name="$(basename "$src")"
+        dest="$INSTALL_DIR/healthcheck/$name"
+
+        if [[ ! -f "$dest" ]]; then
+            echo "Adding health check $name"
+            cp "$src" "$dest"
+            continue
+        fi
+
+        cmp -s "$src" "$dest" && continue   # already current
+
+        if [[ "$REPLACE_HEALTHCHECKS" == "yes" ]]; then
+            echo "Replacing health check $name (server version kept as $name.bak)"
+            cp -p "$dest" "$dest.bak"
+            cp "$src" "$dest"
+            continue
+        fi
+
+        if in_repo_history "healthcheck/$name" "$(file_hash "$dest")"; then
+            echo "Updating health check $name"
+            cp "$src" "$dest"
+        else
+            cp "$src" "$dest.repo"
+            echo "WARNING: health check $name was edited on this server and has also changed in the repository."
+            echo "         Kept the server version. The repository version is at $dest.repo for a manual merge"
+            echo "         (or re-run with -replace-healthchecks to overwrite it; a .bak copy is kept)."
+        fi
+    done
+    # Stale .repo copies from an earlier run are refreshed above; drop the
+    # ones whose conflict has been resolved (live file now matches the repo).
+    for src in "$INSTALL_DIR"/healthcheck/*.json.repo; do
+        [[ -f "$src" ]] || continue
+        dest="${src%.repo}"
+        if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
+            rm -f "$src"
+        fi
+    done
+}
+
 sync_app_files() {
     info "Installing application to $INSTALL_DIR"
     if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
@@ -66,7 +142,8 @@ sync_app_files() {
 
     mkdir -p "$INSTALL_DIR"
     # healthcheck/ holds the checklist definitions, which editors modify
-    # through the site, so it is live data: never overwritten by a deploy.
+    # through the site, so it is live data: synced by sync_healthchecks
+    # instead of being overwritten by rsync.
     rsync -a --delete \
         --exclude 'deploy/' \
         --exclude '.git/' \
@@ -82,16 +159,7 @@ sync_app_files() {
     [[ -f "$INSTALL_DIR/config.json" ]] || cp "$REPO_DIR/config.json.example" "$INSTALL_DIR/config.json"
     [[ -f "$INSTALL_DIR/data/feedback.json" ]] || echo '{}' > "$INSTALL_DIR/data/feedback.json"
 
-    # Health checks added to the repository are installed; existing ones are
-    # left alone because they contain the edits made through the site.
-    for src in "$REPO_DIR"/healthcheck/*.json; do
-        [[ -f "$src" ]] || continue
-        dest="$INSTALL_DIR/healthcheck/$(basename "$src")"
-        if [[ ! -f "$dest" ]]; then
-            echo "Adding health check $(basename "$src")"
-            cp "$src" "$dest"
-        fi
-    done
+    sync_healthchecks
 
     # Code read-only, data/ and healthcheck/ writable by the service user.
     chown -R root:root "$INSTALL_DIR"
@@ -132,7 +200,7 @@ if [[ "$UPDATE_MODE" == "yes" ]]; then
     info "Update mode: git pull, sync application files and restart $SERVICE_NAME"
     command -v git >/dev/null 2>&1 || fail "git is not installed (install it or re-run ./install.sh to add git)"
     [[ -d "$REPO_DIR/.git" ]] || fail "$REPO_DIR is not a git repository"
-    git -C "$REPO_DIR" pull --ff-only
+    repo_git pull --ff-only
     systemctl list-unit-files "$SERVICE_NAME.service" --no-legend 2>/dev/null | grep -q . \
         || fail "$SERVICE_NAME is not installed; run ./install.sh without -update first"
     sync_app_files

@@ -58,7 +58,13 @@ nano install.conf        # set DOMAIN and LETSENCRYPT_EMAIL
 sudo bash install.sh
 ```
 
-The domain must already have a public DNS record pointing at the server, otherwise the Let's Encrypt challenge fails (set `SKIP_CERTBOT="yes"` in `install.conf` for an HTTP-only dry run). The app is installed to `/opt/oci-healthcheck`; live data lives in `/opt/oci-healthcheck/data` (feedback) and `/opt/oci-healthcheck/healthcheck` (the checklists, including edits made through the site) and is preserved when the installer is re-run to deploy updates. Health checks that are new in the repository are added on deploy; existing ones are never overwritten.
+The domain must already have a public DNS record pointing at the server, otherwise the Let's Encrypt challenge fails (set `SKIP_CERTBOT="yes"` in `install.conf` for an HTTP-only dry run). The app is installed to `/opt/oci-healthcheck`; live data lives in `/opt/oci-healthcheck/data` (feedback) and `/opt/oci-healthcheck/healthcheck` (the checklists, including edits made through the site) and is preserved when the installer is re-run to deploy updates.
+
+To deploy a new version, run `sudo bash install.sh -update` (git pull, sync files, restart the service). Health checks are handled as follows on every run:
+
+- new checklist files in the repository are added;
+- deployed checklists that were never edited on the server (their content still matches a version in the repository's git history) are updated to the repository version;
+- a checklist that was edited on the server *and* changed in the repository is kept as is; the repository version is written next to it as `<name>.json.repo` for a manual merge, and a warning is printed. Add `-replace-healthchecks` to overwrite such files with the repository version anyway (the server version is kept as `<name>.json.bak`).
 
 ## Features
 
