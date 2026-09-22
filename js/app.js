@@ -99,6 +99,13 @@
     '<path d="M4.5 10.5h-1.5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
     "</svg>";
 
+  var WORD_ICON =
+    '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M3 2.5h6.5L13 6v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
+    '<path d="M9.5 2.5V6H13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
+    '<path d="M4.3 8.2l1 4.3 1.2-3.2 1.2 3.2 1-4.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+    "</svg>";
+
   var STATUSES = [
     { id: "none", label: "Not checked", cls: "s-none", icon: ICONS.none },
     { id: "done", label: "Checked off", cls: "s-done", icon: ICONS.done },
@@ -1579,7 +1586,20 @@
     var groups = actionItemGroups();
 
     var header = el("div", "page-header");
-    header.appendChild(el("h1", "", ACTION_ITEMS_TITLE));
+    var titleRow = el("div", "page-title-row");
+    titleRow.appendChild(el("h1", "", ACTION_ITEMS_TITLE));
+
+    var wordBtn = el("button", "btn title-actions");
+    wordBtn.type = "button";
+    wordBtn.innerHTML = WORD_ICON + "<span>Export to Word</span>";
+    wordBtn.title = "Download the action items as a Word document (.docx)";
+    wordBtn.disabled = !groups.length;
+    wordBtn.addEventListener("click", function () {
+      exportActionItemsDocx(groups);
+    });
+    titleRow.appendChild(wordBtn);
+    header.appendChild(titleRow);
+
     header.appendChild(el("p", "", ACTION_ITEMS_DESCRIPTION));
     header.appendChild(actionPillRow(actionItemCounts(groups)));
     content.appendChild(header);
@@ -1787,7 +1807,422 @@
     }));
   }
 
+  /* ---------------------------- Word export --------------------------- */
+
+  /* A .docx is a ZIP of XML parts. The ZIP is written here with the "store"
+     method (no compression) so no library is needed. */
+
+  var CRC_TABLE = (function () {
+    var table = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function utf8Bytes(str) {
+    return new TextEncoder().encode(str);
+  }
+
+  /* files: [{ name, text }] -> Uint8Array of a stored ZIP archive. */
+  function buildZip(files) {
+    var now = new Date();
+    var dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    var dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+    var localParts = [];
+    var centralParts = [];
+    var offset = 0;
+
+    files.forEach(function (file) {
+      var name = utf8Bytes(file.name);
+      var data = utf8Bytes(file.text);
+      var crc = crc32(data);
+
+      var local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);          // version needed
+      local.setUint16(6, 0x0800, true);      // flags: UTF-8 names
+      local.setUint16(8, 0, true);           // method: store
+      local.setUint16(10, dosTime, true);
+      local.setUint16(12, dosDate, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, name.length, true);
+      local.setUint16(28, 0, true);
+
+      var central = new DataView(new ArrayBuffer(46));
+      central.setUint32(0, 0x02014b50, true);
+      central.setUint16(4, 20, true);        // version made by
+      central.setUint16(6, 20, true);        // version needed
+      central.setUint16(8, 0x0800, true);
+      central.setUint16(10, 0, true);
+      central.setUint16(12, dosTime, true);
+      central.setUint16(14, dosDate, true);
+      central.setUint32(16, crc, true);
+      central.setUint32(20, data.length, true);
+      central.setUint32(24, data.length, true);
+      central.setUint16(28, name.length, true);
+      central.setUint16(30, 0, true);        // extra
+      central.setUint16(32, 0, true);        // comment
+      central.setUint16(34, 0, true);        // disk
+      central.setUint16(36, 0, true);        // internal attrs
+      central.setUint32(38, 0, true);        // external attrs
+      central.setUint32(42, offset, true);   // local header offset
+
+      localParts.push(new Uint8Array(local.buffer), name, data);
+      centralParts.push(new Uint8Array(central.buffer), name);
+      offset += 30 + name.length + data.length;
+    });
+
+    var centralSize = centralParts.reduce(function (n, p) { return n + p.length; }, 0);
+    var eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(4, 0, true);
+    eocd.setUint16(6, 0, true);
+    eocd.setUint16(8, files.length, true);
+    eocd.setUint16(10, files.length, true);
+    eocd.setUint32(12, centralSize, true);
+    eocd.setUint32(16, offset, true);
+    eocd.setUint16(20, 0, true);
+
+    var parts = localParts.concat(centralParts, [new Uint8Array(eocd.buffer)]);
+    var total = parts.reduce(function (n, p) { return n + p.length; }, 0);
+    var out = new Uint8Array(total);
+    var pos = 0;
+    parts.forEach(function (p) { out.set(p, pos); pos += p.length; });
+    return out;
+  }
+
+  /* ---- WordprocessingML helpers ---- */
+
+  function xmlEscape(text) {
+    return String(text)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+  }
+
+  /* One run; "\n" in the text becomes a line break inside the run.
+     opts: bold, italic, color (hex), size (half-points) */
+  function wRun(text, opts) {
+    opts = opts || {};
+    var props = "";
+    if (opts.bold) props += "<w:b/>";
+    if (opts.italic) props += "<w:i/>";
+    if (opts.color) props += '<w:color w:val="' + opts.color + '"/>';
+    if (opts.size) props += '<w:sz w:val="' + opts.size + '"/><w:szCs w:val="' + opts.size + '"/>';
+    var lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+    var body = lines.map(function (line) {
+      return '<w:t xml:space="preserve">' + xmlEscape(line) + "</w:t>";
+    }).join("<w:br/>");
+    return "<w:r>" + (props ? "<w:rPr>" + props + "</w:rPr>" : "") + body + "</w:r>";
+  }
+
+  /* opts: style, after (spacing after, twips), before, keepNext */
+  function wPara(runs, opts) {
+    opts = opts || {};
+    var props = "";
+    if (opts.style) props += '<w:pStyle w:val="' + opts.style + '"/>';
+    if (opts.keepNext) props += "<w:keepNext/>";
+    if (opts.before !== undefined || opts.after !== undefined) {
+      props += "<w:spacing" +
+        (opts.before !== undefined ? ' w:before="' + opts.before + '"' : "") +
+        (opts.after !== undefined ? ' w:after="' + opts.after + '"' : "") + "/>";
+    }
+    return "<w:p>" + (props ? "<w:pPr>" + props + "</w:pPr>" : "") + (runs || "") + "</w:p>";
+  }
+
+  /* opts: width (twips), fill (hex shading), vAlign */
+  function wCell(paras, opts) {
+    opts = opts || {};
+    var props = '<w:tcW w:w="' + (opts.width || 0) + '" w:type="dxa"/>';
+    if (opts.fill) props += '<w:shd w:val="clear" w:color="auto" w:fill="' + opts.fill + '"/>';
+    if (opts.vAlign) props += '<w:vAlign w:val="' + opts.vAlign + '"/>';
+    return "<w:tc><w:tcPr>" + props + "</w:tcPr>" + (paras || wPara("")) + "</w:tc>";
+  }
+
+  var DOCX_PAGE_WIDTH = 11906;   // A4, twips
+  var DOCX_PAGE_HEIGHT = 16838;
+  var DOCX_MARGIN = 1134;        // 2 cm
+  var DOCX_TEXT_WIDTH = DOCX_PAGE_WIDTH - 2 * DOCX_MARGIN;
+
+  var DOCX_COLORS = {
+    text: "161513",
+    muted: "5F5D59",
+    border: "D5D3CF",
+    headFill: "F5F4F2",
+    attn: "B3251B",
+    attnFill: "FADFDD",
+    wip: "7A5C07",
+    wipFill: "FBEEC0",
+    accent: "2E6B52"
+  };
+
+  var DOCX_STATUS_LABEL = { wip: "In progress", attn: "Needs attention" };
+
+  function docxStylesXml() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      "<w:docDefaults><w:rPrDefault><w:rPr>" +
+      '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/>' +
+      '<w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="en-US"/>' +
+      "</w:rPr></w:rPrDefault>" +
+      '<w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault>' +
+      "</w:docDefaults>" +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/>' +
+      '<w:rPr><w:color w:val="' + DOCX_COLORS.text + '"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:spacing w:after="60"/></w:pPr>' +
+      '<w:rPr><w:b/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:spacing w:after="240"/></w:pPr>' +
+      '<w:rPr><w:color w:val="' + DOCX_COLORS.muted + '"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:keepNext/><w:spacing w:before="360" w:after="120"/><w:outlineLvl w:val="0"/>' +
+      '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="' + DOCX_COLORS.border + '"/></w:pBdr></w:pPr>' +
+      '<w:rPr><w:b/><w:color w:val="' + DOCX_COLORS.accent + '"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr>' +
+      '<w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Compact"><w:name w:val="Compact"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:spacing w:before="40" w:after="40"/></w:pPr></w:style>' +
+      "</w:styles>";
+  }
+
+  function docxCoreXml(title) {
+    var now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+      'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ' +
+      'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      "<dc:title>" + xmlEscape(title) + "</dc:title>" +
+      "<dc:creator>" + xmlEscape(APP_TITLE) + "</dc:creator>" +
+      '<dcterms:created xsi:type="dcterms:W3CDTF">' + now + "</dcterms:created>" +
+      '<dcterms:modified xsi:type="dcterms:W3CDTF">' + now + "</dcterms:modified>" +
+      "</cp:coreProperties>";
+  }
+
+  /* Summary table: one row per category with its wip / attn counts. */
+  function docxSummaryTable(groups) {
+    var widths = [DOCX_TEXT_WIDTH - 2 * 1700, 1700, 1700];
+    var rows = "";
+
+    rows += "<w:tr><w:trPr><w:tblHeader/></w:trPr>" +
+      wCell(wPara(wRun("Category", { bold: true }), { style: "Compact" }), { width: widths[0], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun("In progress", { bold: true, color: DOCX_COLORS.wip }), { style: "Compact" }), { width: widths[1], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun("Needs attention", { bold: true, color: DOCX_COLORS.attn }), { style: "Compact" }), { width: widths[2], fill: DOCX_COLORS.headFill }) +
+      "</w:tr>";
+
+    var totals = { wip: 0, attn: 0 };
+    groups.forEach(function (group) {
+      var c = { wip: 0, attn: 0 };
+      group.matches.forEach(function (m) { c[getItemState(m.item.id).status]++; });
+      totals.wip += c.wip;
+      totals.attn += c.attn;
+      rows += "<w:tr>" +
+        wCell(wPara(wRun(plainTextFromHtml(group.cat.title)), { style: "Compact" }), { width: widths[0] }) +
+        wCell(wPara(wRun(String(c.wip), { color: c.wip ? DOCX_COLORS.wip : DOCX_COLORS.muted }), { style: "Compact" }), { width: widths[1] }) +
+        wCell(wPara(wRun(String(c.attn), { bold: c.attn > 0, color: c.attn ? DOCX_COLORS.attn : DOCX_COLORS.muted }), { style: "Compact" }), { width: widths[2] }) +
+        "</w:tr>";
+    });
+
+    rows += "<w:tr>" +
+      wCell(wPara(wRun("Total", { bold: true }), { style: "Compact" }), { width: widths[0], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun(String(totals.wip), { bold: true, color: DOCX_COLORS.wip }), { style: "Compact" }), { width: widths[1], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun(String(totals.attn), { bold: true, color: DOCX_COLORS.attn }), { style: "Compact" }), { width: widths[2], fill: DOCX_COLORS.headFill }) +
+      "</w:tr>";
+
+    return docxTable(widths, rows);
+  }
+
+  function docxTable(widths, rowsXml) {
+    var border = function (side) {
+      return "<w:" + side + ' w:val="single" w:sz="4" w:space="0" w:color="' + DOCX_COLORS.border + '"/>';
+    };
+    return "<w:tbl><w:tblPr>" +
+      '<w:tblW w:w="' + DOCX_TEXT_WIDTH + '" w:type="dxa"/>' +
+      '<w:tblLayout w:type="fixed"/>' +
+      "<w:tblBorders>" + ["top", "left", "bottom", "right", "insideH", "insideV"].map(border).join("") + "</w:tblBorders>" +
+      '<w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/>' +
+      '<w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar>' +
+      "</w:tblPr><w:tblGrid>" +
+      widths.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join("") +
+      "</w:tblGrid>" + rowsXml + "</w:tbl>";
+  }
+
+  /* One table per category: Status | Item | Findings. */
+  function docxCategoryTable(group) {
+    var widths = [1500, 3600, DOCX_TEXT_WIDTH - 1500 - 3600];
+    var rows = "<w:tr><w:trPr><w:tblHeader/></w:trPr>" +
+      wCell(wPara(wRun("Status", { bold: true }), { style: "Compact" }), { width: widths[0], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun("Checklist item", { bold: true }), { style: "Compact" }), { width: widths[1], fill: DOCX_COLORS.headFill }) +
+      wCell(wPara(wRun("Findings / comments", { bold: true }), { style: "Compact" }), { width: widths[2], fill: DOCX_COLORS.headFill }) +
+      "</w:tr>";
+
+    group.matches.forEach(function (match) {
+      var item = match.item;
+      var st = getItemState(item.id);
+      var isAttn = st.status === "attn";
+      var statusColor = isAttn ? DOCX_COLORS.attn : DOCX_COLORS.wip;
+      var statusFill = isAttn ? DOCX_COLORS.attnFill : DOCX_COLORS.wipFill;
+
+      var statusCell = wCell(
+        wPara(wRun(DOCX_STATUS_LABEL[st.status] || st.status, { bold: true, color: statusColor }), { style: "Compact" }),
+        { width: widths[0], fill: statusFill }
+      );
+
+      var itemParas = "";
+      if (match.path.length) {
+        var crumbs = match.path.map(function (parent) {
+          return (parent.num ? parent.num + " " : "") + plainTextFromHtml(parent.label);
+        }).join(" \u203a ");
+        itemParas += wPara(wRun(crumbs, { color: DOCX_COLORS.muted, size: 16 }), { style: "Compact", after: 20 });
+      }
+      itemParas += wPara(
+        wRun((item.num ? item.num + " " : "") + plainTextFromHtml(item.label), { bold: true }),
+        { style: "Compact" }
+      );
+      if (item.description) {
+        var desc = plainTextFromHtml(item.description).replace(/\s*\n\s*/g, "\n").trim();
+        if (desc) itemParas += wPara(wRun(desc, { color: DOCX_COLORS.muted, size: 18 }), { style: "Compact", before: 20 });
+      }
+      var itemCell = wCell(itemParas, { width: widths[1] });
+
+      var comment = (st.comment || "").trim();
+      var commentCell = wCell(
+        comment
+          ? wPara(wRun(comment), { style: "Compact" })
+          : wPara(wRun("No comment recorded", { italic: true, color: DOCX_COLORS.muted }), { style: "Compact" }),
+        { width: widths[2] }
+      );
+
+      rows += "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + statusCell + itemCell + commentCell + "</w:tr>";
+    });
+
+    return docxTable(widths, rows);
+  }
+
+  function docxDocumentXml(groups) {
+    var counts = actionItemCounts(groups);
+    var title = plainTextFromHtml(HEALTHCHECK.title);
+    var when = new Date().toLocaleString();
+
+    var body = "";
+    body += wPara(wRun(title), { style: "Title" });
+    body += wPara(wRun(ACTION_ITEMS_TITLE + " \u2013 exported " + when), { style: "Subtitle" });
+
+    body += wPara(
+      wRun("This report lists the checklist items of the ", {}) +
+      wRun(title, { bold: true }) +
+      wRun(" health check that are marked as ", {}) +
+      wRun("In progress", { bold: true, color: DOCX_COLORS.wip }) +
+      wRun(" or ", {}) +
+      wRun("Needs attention", { bold: true, color: DOCX_COLORS.attn }) +
+      wRun(", together with the findings recorded during the review. " +
+        counts.attn + " item" + (counts.attn === 1 ? "" : "s") + " need" + (counts.attn === 1 ? "s" : "") +
+        " attention and " + counts.wip + " " + (counts.wip === 1 ? "is" : "are") + " in progress.", {}),
+      { after: 200 }
+    );
+
+    body += wPara(wRun("Summary"), { style: "Heading1" });
+    body += docxSummaryTable(groups);
+    body += wPara("", { after: 0 });
+
+    groups.forEach(function (group) {
+      body += wPara(wRun(plainTextFromHtml(group.cat.title)), { style: "Heading1" });
+      if (group.cat.description) {
+        var catDesc = plainTextFromHtml(group.cat.description).trim();
+        if (catDesc) body += wPara(wRun(catDesc, { color: DOCX_COLORS.muted }), { after: 120 });
+      }
+      body += docxCategoryTable(group);
+      body += wPara("", { after: 0 });
+    });
+
+    body += wPara(
+      wRun("Generated with " + APP_TITLE + ". Statuses and comments are recorded by the reviewer in the browser; " +
+        "this document contains exactly what was entered there.", { italic: true, color: DOCX_COLORS.muted, size: 16 }),
+      { before: 360 }
+    );
+
+    var sectPr = "<w:sectPr>" +
+      '<w:pgSz w:w="' + DOCX_PAGE_WIDTH + '" w:h="' + DOCX_PAGE_HEIGHT + '"/>' +
+      '<w:pgMar w:top="' + DOCX_MARGIN + '" w:right="' + DOCX_MARGIN + '" w:bottom="' + DOCX_MARGIN +
+      '" w:left="' + DOCX_MARGIN + '" w:header="708" w:footer="708" w:gutter="0"/>' +
+      "</w:sectPr>";
+
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      "<w:body>" + body + sectPr + "</w:body></w:document>";
+  }
+
+  function exportActionItemsDocx(groups) {
+    groups = groups || actionItemGroups();
+    if (!groups.length) {
+      alert("There are no action items to export. Items marked as \u201cIn progress\u201d or \u201cNeeds attention\u201d are included in this export.");
+      return;
+    }
+
+    var title = plainTextFromHtml(HEALTHCHECK.title) + " \u2013 " + ACTION_ITEMS_TITLE;
+    var files = [
+      {
+        name: "[Content_Types].xml",
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+          '<Default Extension="xml" ContentType="application/xml"/>' +
+          '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+          '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+          '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+          "</Types>"
+      },
+      {
+        name: "_rels/.rels",
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+          '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+          "</Relationships>"
+      },
+      {
+        name: "word/_rels/document.xml.rels",
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+          "</Relationships>"
+      },
+      { name: "word/styles.xml", text: docxStylesXml() },
+      { name: "word/document.xml", text: docxDocumentXml(groups) },
+      { name: "docProps/core.xml", text: docxCoreXml(title) }
+    ];
+
+    var bytes = buildZip(files);
+    var blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    });
+    downloadBlob(blob, ACTIVE_ID + "-action-items-" + downloadFilenameStamp() + ".docx");
+  }
+
   /* --------------------------- Export / import ------------------------ */
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   function downloadJson(obj, filename) {
     var blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });

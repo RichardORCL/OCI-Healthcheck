@@ -915,6 +915,21 @@ body.editor-on .edit-controls {
 
 .page-title-row h1 { margin: 0; }
 
+/* Page-level action buttons (e.g. Export to Word), right-aligned in the title row */
+.page-title-row .title-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.title-actions svg { width: 15px; height: 15px; display: block; color: var(--text-muted); }
+
+.title-actions:disabled { opacity: 0.5; cursor: default; }
+
+.title-actions:disabled:hover { background: #fff; }
+
 .inline-edit {
   display: flex;
   flex-direction: column;
