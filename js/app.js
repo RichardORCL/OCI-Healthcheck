@@ -904,6 +904,29 @@
 
   /* --------------------------- Checklist item ------------------------- */
 
+  /* Comment fields grow with their content so that (at least) the first
+     COMMENT_AUTO_LINES lines are visible without scrolling. Beyond that the
+     user resizes the field by hand; once they do, auto-sizing stops for it. */
+  var COMMENT_AUTO_LINES = 10;
+
+  function autosizeComment(textarea) {
+    if (!textarea.offsetParent) return; // not visible (comment box closed)
+    if (textarea.dataset.autoHeight &&
+        Math.abs(textarea.offsetHeight - parseFloat(textarea.dataset.autoHeight)) > 2) {
+      return; // resized manually by the user
+    }
+    var cs = window.getComputedStyle(textarea);
+    var lineHeight = parseFloat(cs.lineHeight) || 19;
+    var padding = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    var borders = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    var maxHeight = COMMENT_AUTO_LINES * lineHeight + padding + borders;
+    // scrollHeight covers content + padding (box-sizing is border-box, so add borders)
+    textarea.style.height = "auto";
+    var wanted = Math.min(textarea.scrollHeight + borders, maxHeight);
+    textarea.style.height = wanted + "px";
+    textarea.dataset.autoHeight = String(textarea.offsetHeight);
+  }
+
   var dragId = null; // id of the item currently being dragged
   var dragCatRoute = null; // route of the category card currently being dragged
 
@@ -1135,9 +1158,15 @@
     commentBtn.type = "button";
     commentBtn.addEventListener("click", function () {
       commentBox.classList.toggle("open");
-      if (commentBox.classList.contains("open")) textarea.focus();
+      if (commentBox.classList.contains("open")) {
+        autosizeComment(textarea);
+        textarea.focus();
+      }
     });
+    // The element is not in the DOM yet; size it once the page has rendered.
+    if (hasComment) requestAnimationFrame(function () { autosizeComment(textarea); });
     textarea.addEventListener("input", function () {
+      autosizeComment(textarea);
       var check = validateUserText(textarea.value);
       if (!check.ok) {
         commentError.textContent = check.message;
