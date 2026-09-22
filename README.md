@@ -2,6 +2,12 @@
 
 A small website to walk through health checks for Oracle Cloud Infrastructure services, styled after the OCI Console. Each health check is a JSON checklist in the `healthcheck/` folder; the site opens with a landing page where you pick the health check to run through. The tool ships with health checks for various OCI services, and new ones are added simply by dropping another checklist file into that folder.
 
+## Hosted version
+
+You do not need to install anything to use the health checks: a public instance is available at **[https://healthcheck.oci-workshop.com](https://healthcheck.oci-workshop.com)**.
+
+Everything you enter while working through a health check - statuses, comments, the details of the environment you are reviewing - stays in your own browser (localStorage) and is never transmitted to the server. Nothing about your tenancy or customer is stored on the server side. The only data sent to the server is the optional feedback you choose to submit about a checklist item, which maintainers use to improve the checklists. To continue on another machine or share results with a colleague, use **Export results** / **Import results** from the menu.
+
 ## Usage
 
 Run the bundled server (plain Python, no dependencies). It serves the site, lists the available health checks and persists checklist edits made in editor mode:
