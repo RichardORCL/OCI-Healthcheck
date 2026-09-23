@@ -9,7 +9,8 @@ health check id used in the URLs below.
 - POST /api/editor/verify          (editor password required) checks the
   password before the browser enables editor mode.
 - POST /api/checklist/<id>         (editor password required) writes the
-  checklist definition to healthcheck/<id>.json, so edits are shared.
+  checklist definition to healthcheck/<id>.json, so edits are shared. The
+  file is created when it does not exist yet (new health check).
 - POST /api/feedback/<id>          (open to everyone) stores anonymous
   feedback about a checklist item in data/feedback.json.
 - GET  /api/feedback/<id>          (editor password required) returns all
@@ -180,15 +181,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _api_with_id(self):
+    def _api_with_id(self, allow_new_checklist=False):
         """('checklist'|'feedback', id) for /api/<kind>/<id>, else None.
-        Sends a 404 itself when the id is unsafe or unknown."""
+        Sends a 404 itself when the id is unsafe or unknown. With
+        allow_new_checklist a checklist id without a file is accepted, so the
+        editor can create a new health check."""
         match = API_WITH_ID_RE.match(self._clean_path())
         if not match:
             return None
         kind, healthcheck_id = match.groups()
         path = healthcheck_file(healthcheck_id)
-        if path is None or not path.is_file():
+        if path is None:
+            self.send_error(404, "Invalid health check id")
+            return "handled"
+        if not path.is_file() and not (allow_new_checklist and kind == "checklist"):
             self.send_error(404, "Unknown health check")
             return "handled"
         return kind, healthcheck_id
@@ -235,7 +241,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/editor/verify":
             self._post_editor_verify()
             return
-        target = self._api_with_id()
+        target = self._api_with_id(allow_new_checklist=True)
         if target == "handled":
             return
         if target is None:

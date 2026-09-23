@@ -176,8 +176,8 @@ The OCVS and OCI Storage health checks follow a similar shape. Not every categor
 
 ## Workflow for a new health check
 
-1. Draft the file from the minimal template above and save it as `healthcheck/<Name>.json`.
-2. Run `python server.py` and open the landing page; the new card appears. Fix any "Skipping ..." message printed by the server (usually a JSON syntax error).
-3. Refine the content in the browser with **Enable editor**: add/edit items, links and commands, drag to reorder, edit category and overview text. Every change is written back to the file.
-4. Use **Download checklist (JSON)** for a copy, review the diff, and commit the file to the repository. On deployed servers a health check that is new in the repository is added on the next `install.sh -update`; existing ones are left alone because they contain edits made through the site.
+1. Either draft the file from the minimal template above and save it as `healthcheck/<Name>.json`, or run `python server.py`, **Enable editor** and use the **+ Add health check** card on the landing page: it asks for a title, creates an empty `healthcheck/<Title>.json` and opens it.
+2. Open the landing page; the new card appears. For a hand-written file, fix any "Skipping ..." message printed by the server (usually a JSON syntax error).
+3. Refine the content in the browser with **Enable editor**: edit the overview description, add categories, add/edit items, links and commands, drag to reorder. Every change is written back to the file.
+4. Use **Download checklist (JSON)** for a copy, review the diff, and commit the file to the repository. On deployed servers a health check that is new in the repository is added on the next `install.sh -update`; deployed ones are updated as long as they were not edited on the server (see the README's deployment section).
 5. Once the health check is in use, keep item ids stable so exported results and collected feedback remain attached to the right items.

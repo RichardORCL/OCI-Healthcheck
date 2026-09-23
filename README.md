@@ -29,7 +29,10 @@ Other machines can then browse to `http://<this-machine's-IP>:8080`. Note that s
 
 ## Adding a health check
 
-Drop a checklist definition into the `healthcheck/` folder as `<name>.json` and reload the landing page; no restart is needed. The file name (without `.json`) becomes the health check id used in the URL, e.g. `healthcheck/My-Service.json` is opened via `#/My-Service`. Use only letters, digits, `.`, `_` and `-` in the name.
+There are two ways:
+
+- **In the browser**: enable the editor (see below) and use the **+ Add health check** card on the landing page. Enter a title; an empty health check is created on the server and opened, and you add the description and categories in place with the editor tools.
+- **As a file**: drop a checklist definition into the `healthcheck/` folder as `<name>.json` and reload the landing page; no restart is needed. The file name (without `.json`) becomes the health check id used in the URL, e.g. `healthcheck/My-Service.json` is opened via `#/My-Service`. Use only letters, digits, `.`, `_` and `-` in the name.
 
 The file has the same structure as the bundled checklists in `healthcheck/`:
 
@@ -83,6 +86,7 @@ The hamburger menu has an **Editor** section. Choosing **Enable editor** asks fo
 - Add, edit and remove checklist items (including sub-items) on every category page. Outline numbering (a / i / 1) is recalculated automatically.
 - Manage an item's reference links in the same inline editor: edit the display text and URL of existing links, remove them, or use **+ Add link** to attach new ones. URLs typed directly in an item's text are also rendered as clickable links automatically.
 - Reorder items by dragging the dotted grip at the left edge of an item up or down; items can be reordered among their siblings (within the same parent).
+- Create a new health check with the **+ Add health check** card on the landing page.
 - Add categories from the health check's overview page, and rename or delete a category from its page header. The overview page's title and description (what the landing page card shows) can be edited there as well.
 - **Download checklist (JSON)** - downloads the open health check's checklist as a backup copy.
 - **Import checklist (JSON)** - replaces the open health check's entire checklist with a previously downloaded file (after confirmation) and saves it to the server for everyone.

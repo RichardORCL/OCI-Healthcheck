@@ -260,19 +260,25 @@
     return def ? (def.description || "") : (hc.description || "");
   }
 
-  /* Persist checklist edits on the server so everyone sees them. */
-  function saveData() {
-    if (!ACTIVE_ID) return Promise.resolve();
-    return fetch(SAVE_URL + encodeURIComponent(ACTIVE_ID), {
+  /* Write a checklist definition to healthcheck/<id>.json on the server
+     (creates the file for a new health check). Rejects on failure. */
+  function postChecklist(id, data) {
+    return fetch(SAVE_URL + encodeURIComponent(id), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Editor-Password": editorPassword
       },
-      body: JSON.stringify(HEALTHCHECK)
+      body: JSON.stringify(data)
     }).then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status);
-    }).catch(function (err) {
+    });
+  }
+
+  /* Persist checklist edits on the server so everyone sees them. */
+  function saveData() {
+    if (!ACTIVE_ID) return Promise.resolve();
+    return postChecklist(ACTIVE_ID, HEALTHCHECK).catch(function (err) {
       alert(
         "Could not save the checklist to the server (" + (err.message || err) + ").\n\n" +
         "Make sure the site is running via \"python server.py\" (not a plain static file server), " +
@@ -1783,10 +1789,10 @@
       emptyBody.appendChild(el("h2", "", "No health checks found"));
       emptyBody.appendChild(elHtml("p", "",
         "Add a checklist definition as <code>healthcheck/&lt;name&gt;.json</code> " +
-        "on the server and reload this page."));
+        "on the server and reload this page, or enable the editor and use " +
+        "<b>+ Add health check</b>."));
       emptyCard.appendChild(emptyBody);
       content.appendChild(emptyCard);
-      return;
     }
 
     var grid = el("div", "overview-grid hc-grid");
@@ -1812,7 +1818,58 @@
       }
       grid.appendChild(card);
     });
+
+    // Editor-only: add health check card
+    var addCard = el("button", "cat-card add-category add-dashed", "+ Add health check");
+    addCard.type = "button";
+    addCard.addEventListener("click", addHealthcheck);
+    grid.appendChild(addCard);
+
     content.appendChild(grid);
+  }
+
+  /* Health check ids become file names (healthcheck/<id>.json) and URL
+     segments; the server accepts letters, digits, ".", "_" and "-". */
+  function healthcheckIdFromTitle(title) {
+    var base = title.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[._-]+|-+$/g, "") || "Healthcheck";
+    var id = base;
+    var n = 2;
+    while (healthcheckIdTaken(id)) id = base + "-" + n++;
+    return id;
+  }
+
+  function healthcheckIdTaken(id) {
+    var lower = id.toLowerCase();   // file systems may be case-insensitive
+    return HEALTHCHECKS.some(function (hc) { return hc.id.toLowerCase() === lower; });
+  }
+
+  /* Editor: create an empty health check on the server and open it, so the
+     description and categories can be added in place. */
+  function addHealthcheck() {
+    var title = prompt("Title for the new health check (e.g. \u201cOCI Networking Health Check\u201d):");
+    if (!title || !title.trim()) return;
+    title = title.trim();
+    var id = healthcheckIdFromTitle(title);
+    var data = { title: title, description: "", categories: [] };
+    postChecklist(id, data).then(function () {
+      normalizeChecklist(data, id);
+      LOADED[id] = data;
+      HEALTHCHECKS.push({
+        id: id,
+        file: HEALTHCHECK_DIR + encodeURIComponent(id) + ".json",
+        title: title,
+        description: ""
+      });
+      HEALTHCHECKS.sort(function (a, b) {
+        return healthcheckTitle(a).toLowerCase() < healthcheckTitle(b).toLowerCase() ? -1 : 1;
+      });
+      window.location.hash = "#/" + encodeURIComponent(id);
+    }).catch(function (err) {
+      alert(
+        "Could not create the health check on the server (" + (err.message || err) + ").\n\n" +
+        "Make sure the site is running via \"python server.py\" (not a plain static file server)."
+      );
+    });
   }
 
   /* Load every health check definition so the landing page can show the
